@@ -1,15 +1,16 @@
 imu_filter:
   ros__parameters:
     stateless: false
-    use_mag: true
+    use_mag: false
     publish_tf: true
     reverse_tf: false
     fixed_frame: "odom"
     constant_dt: 0.0
     publish_debug_topics: false
+    remove_gravity_vector: true
     world_frame: "enu"
-    gain: 0.1
-    zeta: 0.0
+    gain: 0.25
+    zeta: 1.0
     mag_bias_x: 0.0
     mag_bias_y: 0.0
     mag_bias_z: 0.0

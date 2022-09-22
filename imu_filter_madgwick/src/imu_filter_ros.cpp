@@ -148,6 +148,26 @@ ImuFilterMadgwickRos::ImuFilterMadgwickRos(const rclcpp::NodeOptions &options)
     double mag_bias_z;
     add_parameter("mag_bias_z", rclcpp::ParameterValue(0.0), float_range,
                   "Magnetometer bias (hard iron correction), z component.");
+    double angular_bias_x;
+    add_parameter("angular_bias_x", rclcpp::ParameterValue(0.0), float_range,
+                  "Angular bias (hard iron correction), x component.");
+    double angular_bias_y;
+    add_parameter("angular_bias_y", rclcpp::ParameterValue(0.0), float_range,
+                  "Angular bias (hard iron correction), y component.");
+    double angular_bias_z;
+    add_parameter("angular_bias_z", rclcpp::ParameterValue(0.0), float_range,
+                  "Angular bias (hard iron correction), z component.");
+    double accel_bias_x;
+    add_parameter("accel_bias_x", rclcpp::ParameterValue(0.0), float_range,
+                  "Accel bias (hard iron correction), x component.");
+    double accel_bias_y;
+    add_parameter("accel_bias_y", rclcpp::ParameterValue(0.0), float_range,
+                  "Accel bias (hard iron correction), y component.");
+    double accel_bias_z;
+    add_parameter("accel_bias_z", rclcpp::ParameterValue(0.0), float_range,
+                  "Accel bias (hard iron correction), z component.");
+
+
     double orientation_stddev;
     float_range = {0.0, 1.0, 0};
     add_parameter("orientation_stddev", rclcpp::ParameterValue(0.0),
@@ -160,6 +180,12 @@ ImuFilterMadgwickRos::ImuFilterMadgwickRos(const rclcpp::NodeOptions &options)
     get_parameter("mag_bias_x", mag_bias_x);
     get_parameter("mag_bias_y", mag_bias_y);
     get_parameter("mag_bias_z", mag_bias_z);
+    get_parameter("angular_bias_x", angular_bias_x);
+    get_parameter("angular_bias_y", angular_bias_y);
+    get_parameter("angular_bias_z", angular_bias_z);
+    get_parameter("accel_bias_x", accel_bias_x);
+    get_parameter("accel_bias_y", accel_bias_y);
+    get_parameter("accel_bias_z", accel_bias_z);
     get_parameter("orientation_stddev", orientation_stddev);
 
     filter_.setAlgorithmGain(gain);
@@ -169,6 +195,12 @@ ImuFilterMadgwickRos::ImuFilterMadgwickRos(const rclcpp::NodeOptions &options)
     mag_bias_.x = mag_bias_x;
     mag_bias_.y = mag_bias_y;
     mag_bias_.z = mag_bias_z;
+    angular_bias_.x = angular_bias_x;
+    angular_bias_.y = angular_bias_y;
+    angular_bias_.z = angular_bias_z;
+    accel_bias_.x = accel_bias_x;
+    accel_bias_.y = accel_bias_y;
+    accel_bias_.z = accel_bias_z;
     orientation_variance_ = orientation_stddev * orientation_stddev;
     RCLCPP_INFO(get_logger(), "Magnetometer bias values: %f %f %f", mag_bias_.x,
                 mag_bias_.y, mag_bias_.z);
@@ -199,7 +231,7 @@ ImuFilterMadgwickRos::ImuFilterMadgwickRos(const rclcpp::NodeOptions &options)
     // connection callback.
     const int queue_size = 5;
     rmw_qos_profile_t qos = rmw_qos_profile_sensor_data;
-    imu_subscriber_.reset(new ImuSubscriber(this, "imu/data_raw", qos));
+    imu_subscriber_.reset(new ImuSubscriber(this, "/ai/imu", qos));
 
     if (use_mag_)
     {
@@ -226,7 +258,15 @@ void ImuFilterMadgwickRos::imuCallback(ImuMsg::ConstSharedPtr imu_msg_raw)
     const geometry_msgs::msg::Vector3 &ang_vel = imu_msg_raw->angular_velocity;
     const geometry_msgs::msg::Vector3 &lin_acc =
         imu_msg_raw->linear_acceleration;
+    geometry_msgs::msg::Vector3 ang_vel_comp;
+    geometry_msgs::msg::Vector3 lin_acc_comp;
 
+    ang_vel_comp.x = ang_vel.x - angular_bias_.x;
+    ang_vel_comp.y = ang_vel.y - angular_bias_.y;
+    ang_vel_comp.z = ang_vel.z - angular_bias_.z;
+    lin_acc_comp.x = lin_acc.x - accel_bias_.x;
+    lin_acc_comp.y = lin_acc.y - accel_bias_.y;
+    lin_acc_comp.z = lin_acc.z - accel_bias_.z;
     rclcpp::Clock steady_clock(RCL_STEADY_TIME);  // for throttle logger message
 
     rclcpp::Time time = imu_msg_raw->header.stamp;
@@ -276,8 +316,8 @@ void ImuFilterMadgwickRos::imuCallback(ImuMsg::ConstSharedPtr imu_msg_raw)
     last_time_ = time;
 
     if (!stateless_)
-        filter_.madgwickAHRSupdateIMU(ang_vel.x, ang_vel.y, ang_vel.z,
-                                      lin_acc.x, lin_acc.y, lin_acc.z, dt);
+        filter_.madgwickAHRSupdateIMU(ang_vel_comp.x, ang_vel_comp.y, ang_vel_comp.z,
+                                      lin_acc_comp.x, lin_acc_comp.y, lin_acc_comp.z, dt);
 
     publishFilteredMsg(imu_msg_raw);
     if (publish_tf_) publishTransform(imu_msg_raw);
@@ -292,7 +332,15 @@ void ImuFilterMadgwickRos::imuMagCallback(ImuMsg::ConstSharedPtr imu_msg_raw,
     const geometry_msgs::msg::Vector3 &lin_acc =
         imu_msg_raw->linear_acceleration;
     const geometry_msgs::msg::Vector3 &mag_fld = mag_msg->magnetic_field;
+    geometry_msgs::msg::Vector3 ang_vel_comp;
+    geometry_msgs::msg::Vector3 lin_acc_comp;
 
+    ang_vel_comp.x = ang_vel.x - angular_bias_.x;
+    ang_vel_comp.y = ang_vel.y - angular_bias_.y;
+    ang_vel_comp.z = ang_vel.z - angular_bias_.z;
+    lin_acc_comp.x = lin_acc.x - accel_bias_.x;
+    lin_acc_comp.y = lin_acc.y - accel_bias_.y;
+    lin_acc_comp.z = lin_acc.z - accel_bias_.z;
     rclcpp::Time time = imu_msg_raw->header.stamp;
     imu_frame_ = imu_msg_raw->header.frame_id;
 
@@ -362,8 +410,8 @@ void ImuFilterMadgwickRos::imuMagCallback(ImuMsg::ConstSharedPtr imu_msg_raw,
 
     if (!stateless_)
     {
-        filter_.madgwickAHRSupdate(ang_vel.x, ang_vel.y, ang_vel.z, lin_acc.x,
-                                   lin_acc.y, lin_acc.z, mag_compensated.x,
+        filter_.madgwickAHRSupdate(ang_vel_comp.x, ang_vel_comp.y, ang_vel_comp.z,
+                                   lin_acc_comp.x, lin_acc_comp.y, lin_acc_comp.z,  mag_compensated.x,
                                    mag_compensated.y, mag_compensated.z, dt);
     }
 
@@ -451,7 +499,12 @@ void ImuFilterMadgwickRos::publishFilteredMsg(
     imu_msg.orientation.x = q1;
     imu_msg.orientation.y = q2;
     imu_msg.orientation.z = q3;
-
+    imu_msg.linear_acceleration.x -= accel_bias_.x;
+    imu_msg.linear_acceleration.y -= accel_bias_.y;
+    imu_msg.linear_acceleration.z -= accel_bias_.z;
+    imu_msg.angular_velocity.x -= angular_bias_.x;
+    imu_msg.angular_velocity.x -= angular_bias_.y;
+    imu_msg.angular_velocity.x -= angular_bias_.z;
     imu_msg.orientation_covariance[0] = orientation_variance_;
     imu_msg.orientation_covariance[1] = 0.0;
     imu_msg.orientation_covariance[2] = 0.0;
@@ -533,6 +586,26 @@ void ImuFilterMadgwickRos::reconfigCallback(
             {
                 double orientation_stddev = value.double_value;
                 orientation_variance_ = orientation_stddev * orientation_stddev;
+            } else if (name == "angular_bias_x")
+            {
+                angular_bias_.x = value.double_value;
+
+            }else if (name == "angular_bias_y")
+            {
+                angular_bias_.y = value.double_value;
+
+            }else if (name == "angular_bias_z")
+            {
+                angular_bias_.z = value.double_value;
+            }else if (name == "accel_bias_x")
+            {
+                accel_bias_.x = value.double_value;
+            }else if (name == "accel_bias_y")
+            {
+                accel_bias_.y = value.double_value;
+            }else if (name == "accel_bias_z")
+            {
+                accel_bias_.z = value.double_value;
             }
         }
     }
@@ -543,10 +616,10 @@ void ImuFilterMadgwickRos::checkTopicsTimerCallback()
     if (use_mag_)
         RCLCPP_WARN_STREAM(
             get_logger(),
-            "Still waiting for data on topics /imu/data_raw and /imu/mag...");
+            "Still waiting for data on topics /ai/imu and /imu/mag...");
     else
         RCLCPP_WARN_STREAM(get_logger(),
-                           "Still waiting for data on topic /imu/data_raw...");
+                           "Still waiting for data on topic /ai/imu...");
 }
 
 #include "rclcpp_components/register_node_macro.hpp"
